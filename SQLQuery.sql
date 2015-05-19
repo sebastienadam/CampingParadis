@@ -1,4 +1,13 @@
-﻿-- Création de la base de données
+﻿SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- =============================================
+-- Création de la base de données
+-- =============================================
+-- =============================================
 create database CampingParadis;
 go
 
@@ -8,7 +17,7 @@ go
 
 -- =============================================
 -- =============================================
--- Description:	<Description,,Création des données du magasin>
+-- Création des données du magasin
 -- =============================================
 -- =============================================
 create schema Magasin;
@@ -42,11 +51,12 @@ create table Magasin.Stock(
 
 create table Magasin.HistoriqueVente (
   ID int identity(1,1) primary key,
-  IDProduit int,
-  Prix money,
-  Quantite int,
-  DateVente DateTime,
-  Vendeur varchar(65)
+  IDMagasin int not null,
+  IDProduit int not null,
+  Prix money not null,
+  Quantite int not null,
+  DateVente DateTime not null,
+  Vendeur varchar(64) not null
 );
 
 create table Magasin.Produit(
@@ -137,6 +147,40 @@ end;
 go
 
 -- =============================================
+-- Création des triggers
+-- =============================================
+
+-- Vend un produit. Le stock sera diminué de la quantité vendue et l'historique de vente sera mis à jour.
+CREATE PROCEDURE Magasin.VendreProduit
+  @IDMagasin int,
+  @IDProduit int,
+  @Quantite int,
+  @Vendeur varchar(64)
+AS
+BEGIN
+	SET NOCOUNT ON;
+  declare @InStock int;
+  declare @QuantiteStock int;
+  declare @Prix money;
+  select @InStock = count(*) from Magasin.Stock where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
+  if @InStock = 1 begin
+    select @QuantiteStock = Quantite from Magasin.Stock where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
+    if @QuantiteStock >= @Quantite begin
+      update Magasin.Stock
+      set Quantite = Quantite - @Quantite
+      where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
+      select @Prix = PrixUnitaire
+      from Magasin.Produit
+      where ID = @IDProduit;
+      insert into Magasin.HistoriqueVente (IDMagasin, IDProduit, Prix, Quantite, DateVente, Vendeur)
+      values (@IDMagasin, @IDProduit, @Prix, @Quantite, GETDATE(), @Vendeur);
+    end
+  end
+  -- valider quantité
+
+END
+GO
+-- =============================================
 -- Remplissage des tables du magasin
 -- =============================================
 insert into Magasin.Magasin (Nom)
@@ -215,6 +259,10 @@ foreign key (IDProduit) references Magasin.Produit (ID);
 
 alter table Magasin.Stock
 add constraint fk_stock_magasin
+foreign key (IDMagasin) references Magasin.Magasin (ID);
+
+alter table Magasin.HistoriqueVente
+add constraint fk_historiquevente_magasin
 foreign key (IDMagasin) references Magasin.Magasin (ID);
 
 alter table Magasin.HistoriqueVente
