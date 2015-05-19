@@ -1,21 +1,30 @@
--- CrÈation de la base de donnÈes
+Ôªø-- Cr√©ation de la base de donn√©es
 create database CampingParadis;
 go
 
 use CampingParadis;
 go
 
--- crÈation des donnÈes du magasin
+
+-- =============================================
+-- =============================================
+-- Description:	<Description,,Cr√©ation des donn√©es du magasin>
+-- =============================================
+-- =============================================
 create schema Magasin;
 go
 
 -- TODO:
--- * procÈdure 'vendre produit'
--- * procÈdure 'approvisionnement stock'
--- * procÈdure 'nouveau produit'
--- * procÈdure 'nouvelle gamme'
--- * procÈdure 'nouvelle famille' => paramËtre 'parent' optionnel
--- * procÈdure 'nouvelle hiÈrarchie famille'
+-- * proc√©dure 'vendre produit'
+-- * proc√©dure 'approvisionnement stock'
+-- * proc√©dure 'nouveau produit'
+-- * proc√©dure 'nouvelle gamme'
+-- * proc√©dure 'nouvelle famille' => param√®tre 'parent' optionnel
+-- * proc√©dure 'nouvelle hi√©rarchie famille'
+
+-- =============================================
+-- Cr√©ation des tables
+-- =============================================
 
 create table Magasin.Magasin (
   ID int identity(1,1) primary key,
@@ -67,78 +76,106 @@ create table Magasin.FamilleHerarchie (
 );
 go
 
-create trigger Magasin.trigger_stock_epuise
+-- =============================================
+-- Cr√©ation des triggers
+-- =============================================
+
+-- Emp√™che d'avoir un stock n√©gatif et met √† jour l'attribut 'Epuise' de la table 'Magasin.Stock'.
+-- '0' signifie que le stock est nul, '1' que le stock est faible, '2' que le stock est suffisant.
+create trigger Magasin.trigger_quantite_stock
 on Magasin.Stock
 after insert, update
 as
 begin
   if update(Quantite) begin
+    begin transaction
+    declare @error bit;
     declare @IDMag int;
     declare @IDProd int;
     declare @Quantite int;
     declare @Epuise int;
-    select @IDMag = IDMagasin, @IDProd = IDProduit, @Quantite = Quantite
-    from inserted;
-    if(@Quantite = 0) begin
-      set @Epuise = 0;
-    end else if(@Quantite < 5) begin
-      set @Epuise = 1;
-    end else begin
-      set @Epuise = 2;
+    set @error = 0;
+    declare cr_inserted cursor
+    for select IDMagasin, IDProduit, Quantite
+        from inserted;
+    open cr_inserted;
+    fetch cr_inserted into @IDMag, @IDProd, @Quantite;
+    while(@@FETCH_STATUS = 0) begin
+      if(@Quantite < 0) begin
+        set @error = 1;
+        break;
+      end else if(@Quantite = 0) begin
+        set @Epuise = 0;
+      end else if(@Quantite < 5) begin
+        set @Epuise = 1;
+      end else begin
+        set @Epuise = 2;
+      end
+      update Magasin.Stock
+      set Epuise = @Epuise
+      where IDMagasin = @IDMag and IDProduit = @IDProd;
+      fetch cr_inserted into @IDMag, @IDProd, @Quantite;
     end
-    update Magasin.Stock
-    set Epuise = @Epuise
-    where IDMagasin = @IDMag and IDProduit = @IDProd;
+    close cr_inserted;
+    deallocate cr_inserted;
+    if(@error = 1) begin
+      rollback;
+    end else begin
+      commit;
+    end
   end
-end
+end;
 go
 
+-- Emp√™che toute modification de valeurs dans la tabe Magasin.HistoriqueVente. Seul l'ajout de donn√©es est autoris√©
 create trigger Magasin.trigger_historique_vente_non_modifiable
 on Magasin.HistoriqueVente
 after update, delete
 as begin
   rollback
-end
+end;
 go
 
--- remplissage des tables du magasin
+-- =============================================
+-- Remplissage des tables du magasin
+-- =============================================
 insert into Magasin.Magasin (Nom)
 values ('La superette des Bellettes grises');
 
 insert into Magasin.Famille (Libelle)
-values ('LÈgumes');
+values ('L√©gumes');
 insert into Magasin.Famille (Libelle)
 values ('Conserves');
 insert into Magasin.Famille (Libelle)
-values ('LÈgumes frais');
+values ('L√©gumes frais');
 insert into Magasin.Famille (Libelle)
-values ('LÈgumes surgelÈs');
+values ('L√©gumes surgel√©s');
 insert into Magasin.Famille (Libelle)
-values ('Conserves de lÈgumes');
+values ('Conserves de l√©gumes');
 
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'LÈgumes frais'),
-       (select ID from Magasin.Famille where Libelle = 'LÈgumes'));
+values((select ID from Magasin.Famille where Libelle = 'L√©gumes frais'),
+       (select ID from Magasin.Famille where Libelle = 'L√©gumes'));
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'LÈgumes surgelÈs'),
-       (select ID from Magasin.Famille where Libelle = 'LÈgumes'));
+values((select ID from Magasin.Famille where Libelle = 'L√©gumes surgel√©s'),
+       (select ID from Magasin.Famille where Libelle = 'L√©gumes'));
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Conserves de lÈgumes'),
-       (select ID from Magasin.Famille where Libelle = 'LÈgumes'));
+values((select ID from Magasin.Famille where Libelle = 'Conserves de l√©gumes'),
+       (select ID from Magasin.Famille where Libelle = 'L√©gumes'));
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Conserves de lÈgumes'),
+values((select ID from Magasin.Famille where Libelle = 'Conserves de l√©gumes'),
        (select ID from Magasin.Famille where Libelle = 'Conserves'));
 
 insert into Magasin.Gamme(Libelle, IDFamille)
 values('Petits pois en conserve',
-       (select ID from Magasin.Famille where Libelle = 'Conserves de lÈgumes'));
+       (select ID from Magasin.Famille where Libelle = 'Conserves de l√©gumes'));
 
 insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
 values('Marie',1.25,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
 insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
 values('Marie',0.75,400,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
 insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
-values('RenÈ',0.49,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
+values('Ren√©',0.49,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
 
 insert into Magasin.Stock (IDMagasin, IDProduit, Quantite)
 values((select ID from Magasin.Magasin where Nom = 'La superette des Bellettes grises'),
@@ -153,7 +190,9 @@ values((select ID from Magasin.Magasin where Nom = 'La superette des Bellettes g
        3,
        5);
 
--- ajout des contraintes sur les tables du magasin
+-- =============================================
+-- Ajout des contraintes sur les tables du magasin
+-- =============================================
 alter table Magasin.FamilleHerarchie
 add constraint fk_famillehierarchie_familleid
 foreign key (IDFamille) references Magasin.Famille (ID);
@@ -183,7 +222,11 @@ add constraint fk_historiquevente_produit
 foreign key (IDProduit) references Magasin.Produit (ID);
 go
 
--- crÈation d'une vue pour afficher les familles avec leur parent
+-- =============================================
+-- Cr√©ation des vues
+-- =============================================
+
+-- Affichage des familles avec leur parent
 create view Magasin.FamilleDetails(ID, Libelle, Parent)
 as
     select F.ID, F.Libelle, P.Libelle Parent
