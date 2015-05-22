@@ -24,8 +24,6 @@ create schema Magasin;
 go
 
 -- TODO:
--- * procédure 'vendre produit'
--- * procédure 'approvisionnement stock'
 -- * procédure 'nouveau produit'
 -- * procédure 'nouvelle gamme'
 -- * procédure 'nouvelle famille' => paramètre 'parent' optionnel
@@ -147,10 +145,11 @@ end;
 go
 
 -- =============================================
--- Création des triggers
+-- Création des procédure
 -- =============================================
 
 -- Vend un produit. Le stock sera diminué de la quantité vendue et l'historique de vente sera mis à jour.
+-- Si le stock est insuffisant, la vente ne sera par réalisée
 CREATE PROCEDURE Magasin.VendreProduit
   @IDMagasin int,
   @IDProduit int,
@@ -166,18 +165,41 @@ BEGIN
   if @InStock = 1 begin
     select @QuantiteStock = Quantite from Magasin.Stock where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
     if @QuantiteStock >= @Quantite begin
-      update Magasin.Stock
-      set Quantite = Quantite - @Quantite
-      where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
       select @Prix = PrixUnitaire
       from Magasin.Produit
       where ID = @IDProduit;
+      begin transaction
+      update Magasin.Stock
+      set Quantite = Quantite - @Quantite
+      where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
       insert into Magasin.HistoriqueVente (IDMagasin, IDProduit, Prix, Quantite, DateVente, Vendeur)
       values (@IDMagasin, @IDProduit, @Prix, @Quantite, GETDATE(), @Vendeur);
+      commit
     end
   end
-  -- valider quantité
+END
+GO
 
+-- (R)ajoute un produit dans le stock
+CREATE PROCEDURE Magasin.ApprovisionnerStock
+  @IDMagasin int,
+  @IDProduit int,
+  @Quantite int
+AS
+BEGIN
+	SET NOCOUNT ON;
+  declare @present int;
+
+  select @present = count(*) from Magasin.Stock where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
+
+  if @present = 0 begin
+    insert into Magasin.Stock (IDMagasin, IDProduit, Quantite)
+    values (@IDMagasin, @IDProduit, @Quantite);
+  end else begin
+    update Magasin.Stock
+    set Quantite += @Quantite
+    where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
+  end
 END
 GO
 -- =============================================
@@ -221,18 +243,9 @@ values('Marie',0.75,400,'gr',(select ID from Magasin.Gamme where Libelle = 'Peti
 insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
 values('René',0.49,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
 
-insert into Magasin.Stock (IDMagasin, IDProduit, Quantite)
-values((select ID from Magasin.Magasin where Nom = 'La superette des Bellettes grises'),
-       1,
-       25);
-insert into Magasin.Stock (IDMagasin, IDProduit, Quantite)
-values((select ID from Magasin.Magasin where Nom = 'La superette des Bellettes grises'),
-       2,
-       12);
-insert into Magasin.Stock (IDMagasin, IDProduit, Quantite)
-values((select ID from Magasin.Magasin where Nom = 'La superette des Bellettes grises'),
-       3,
-       5);
+exec Magasin.ApprovisionnerStock 1, 1, 25;
+exec Magasin.ApprovisionnerStock 1, 2, 12;
+exec Magasin.ApprovisionnerStock 1, 3, 5;
 
 -- =============================================
 -- Ajout des contraintes sur les tables du magasin
