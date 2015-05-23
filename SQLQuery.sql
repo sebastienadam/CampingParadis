@@ -14,6 +14,31 @@ go
 use CampingParadis;
 go
 
+-- =============================================
+-- =============================================
+-- Création des données communes
+-- =============================================
+-- =============================================
+create schema Commun;
+go
+
+-- =============================================
+-- Création des tables
+-- =============================================
+
+create table Commun.Employe (
+  ID int identity(1,1) primary key,
+  Nom varchar(64) not null,
+  Prenom varchar(64) not null,
+);
+
+-- =============================================
+-- Remplissage des tables du magasin
+-- =============================================
+
+insert into Commun.Employe (Nom, Prenom)
+values ('Perfect', 'Ford');
+go
 
 -- =============================================
 -- =============================================
@@ -36,7 +61,8 @@ go
 create table Magasin.Magasin (
   ID int identity(1,1) primary key,
   Nom varchar(64) not null unique,
-  Telephone varchar(32)
+  Telephone varchar(32),
+  IDManager int not null
 );
 
 create table Magasin.Stock(
@@ -54,7 +80,7 @@ create table Magasin.HistoriqueVente (
   Prix money not null,
   Quantite int not null,
   DateVente DateTime not null,
-  Vendeur varchar(64) not null
+  IDVendeur int not null
 );
 
 create table Magasin.Produit(
@@ -154,7 +180,7 @@ CREATE PROCEDURE Magasin.VendreProduit
   @IDMagasin int,
   @IDProduit int,
   @Quantite int,
-  @Vendeur varchar(64)
+  @IDVendeur int
 AS
 BEGIN
 	SET NOCOUNT ON;
@@ -172,8 +198,8 @@ BEGIN
       update Magasin.Stock
       set Quantite = Quantite - @Quantite
       where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
-      insert into Magasin.HistoriqueVente (IDMagasin, IDProduit, Prix, Quantite, DateVente, Vendeur)
-      values (@IDMagasin, @IDProduit, @Prix, @Quantite, GETDATE(), @Vendeur);
+      insert into Magasin.HistoriqueVente (IDMagasin, IDProduit, Prix, Quantite, DateVente, IDVendeur)
+      values (@IDMagasin, @IDProduit, @Prix, @Quantite, GETDATE(), @IDVendeur);
       commit
     end
   end
@@ -244,8 +270,8 @@ declare @IDProduitPetitPoidsConserveMarie400Gr int;
 declare @IDProduitPetitPoidsConserveMarie800Gr int;
 declare @IDProduitPetitPoidsConserveRene800Gr int;
 
-insert into Magasin.Magasin (Nom)
-values ('La superette des Bellettes grises');
+insert into Magasin.Magasin (Nom, IDManager)
+values ('La superette des Bellettes grises', 1);
 set @IDMagasin = SCOPE_IDENTITY();
 
 insert into Magasin.Famille (Libelle)
@@ -292,6 +318,22 @@ exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveRene800
 -- =============================================
 -- Ajout des contraintes sur les tables du magasin
 -- =============================================
+alter table Magasin.Magasin
+add constraint fk_magasin_manager
+foreign key (IDManager) references Commun.Employe (ID);
+
+alter table Magasin.HistoriqueVente
+add constraint fk_historiquevente_magasin
+foreign key (IDMagasin) references Magasin.Magasin (ID);
+
+alter table Magasin.HistoriqueVente
+add constraint fk_historiquevente_produit
+foreign key (IDProduit) references Magasin.Produit (ID);
+
+alter table Magasin.HistoriqueVente
+add constraint fk_historiquevente_vendeur
+foreign key (IDVendeur) references Commun.Employe (ID);
+
 alter table Magasin.FamilleHerarchie
 add constraint fk_famillehierarchie_familleid
 foreign key (IDFamille) references Magasin.Famille (ID);
@@ -319,14 +361,6 @@ foreign key (IDProduit) references Magasin.Produit (ID);
 alter table Magasin.Stock
 add constraint fk_stock_magasin
 foreign key (IDMagasin) references Magasin.Magasin (ID);
-
-alter table Magasin.HistoriqueVente
-add constraint fk_historiquevente_magasin
-foreign key (IDMagasin) references Magasin.Magasin (ID);
-
-alter table Magasin.HistoriqueVente
-add constraint fk_historiquevente_produit
-foreign key (IDProduit) references Magasin.Produit (ID);
 go
 
 -- =============================================
