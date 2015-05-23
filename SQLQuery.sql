@@ -202,50 +202,92 @@ BEGIN
   end
 END
 GO
+
+-- Crée un nouveau produit
+CREATE PROCEDURE Magasin.NouveauProduit
+	@Marque varchar(64),
+  @PrixUnitaire money,
+  @Contenance decimal(8,2),
+  @Unite varchar(16),
+  @IDGamme int,
+  @IDMagasin int = null,
+  @QuantiteStock int = null
+AS
+BEGIN
+	SET NOCOUNT ON;
+  declare @IDNouveauProduit int;
+
+  insert into Magasin.Produit (Marque, PrixUnitaire, Contenance, Unite, IDGamme)
+  values (@Marque, @PrixUnitaire, @Contenance, @Unite, @IDGamme);
+
+  set @IDNouveauProduit = SCOPE_IDENTITY();
+
+  if @IDMagasin is not null begin
+    exec Magasin.ApprovisionnerStock @IDMagasin, @IDNouveauProduit, @QuantiteStock;
+  end
+
+  return @IDNouveauProduit;
+END
+GO
+
 -- =============================================
 -- Remplissage des tables du magasin
 -- =============================================
+declare @IDFamilleConserve int;
+declare @IDFamilleConserveLegume int;
+declare @IDFamilleLegume int;
+declare @IDFamilleLegumeFrais int;
+declare @IDFamilleLegumeSurgele int;
+declare @IDGammePetitPoidsConserve int;
+declare @IDMagasin int;
+declare @IDProduitPetitPoidsConserveMarie400Gr int;
+declare @IDProduitPetitPoidsConserveMarie800Gr int;
+declare @IDProduitPetitPoidsConserveRene800Gr int;
+
 insert into Magasin.Magasin (Nom)
 values ('La superette des Bellettes grises');
+set @IDMagasin = SCOPE_IDENTITY();
 
 insert into Magasin.Famille (Libelle)
 values ('Légumes');
+set @IDFamilleLegume =  SCOPE_IDENTITY();
 insert into Magasin.Famille (Libelle)
 values ('Conserves');
+set @IDFamilleConserve =  SCOPE_IDENTITY();
 insert into Magasin.Famille (Libelle)
 values ('Légumes frais');
+set @IDFamilleLegumeFrais =  SCOPE_IDENTITY();
 insert into Magasin.Famille (Libelle)
 values ('Légumes surgelés');
+set @IDFamilleLegumeSurgele =  SCOPE_IDENTITY();
 insert into Magasin.Famille (Libelle)
 values ('Conserves de légumes');
+set @IDFamilleConserveLegume =  SCOPE_IDENTITY();
 
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Légumes frais'),
-       (select ID from Magasin.Famille where Libelle = 'Légumes'));
+values(@IDFamilleLegumeFrais,
+       @IDFamilleLegume);
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Légumes surgelés'),
-       (select ID from Magasin.Famille where Libelle = 'Légumes'));
+values(@IDFamilleLegumeSurgele,
+       @IDFamilleLegume);
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Conserves de légumes'),
-       (select ID from Magasin.Famille where Libelle = 'Légumes'));
+values(@IDFamilleConserveLegume,
+       @IDFamilleLegume);
 insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values((select ID from Magasin.Famille where Libelle = 'Conserves de légumes'),
-       (select ID from Magasin.Famille where Libelle = 'Conserves'));
+values(@IDFamilleConserveLegume,
+       @IDFamilleConserve);
 
 insert into Magasin.Gamme(Libelle, IDFamille)
-values('Petits pois en conserve',
-       (select ID from Magasin.Famille where Libelle = 'Conserves de légumes'));
+values('Petits pois en conserve',@IDFamilleConserveLegume);
+set @IDGammePetitPoidsConserve =  SCOPE_IDENTITY();
 
-insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
-values('Marie',1.25,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
-insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
-values('Marie',0.75,400,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
-insert into Magasin.Produit(Marque, PrixUnitaire, Contenance, Unite, IDGamme)
-values('René',0.49,800,'gr',(select ID from Magasin.Gamme where Libelle = 'Petits pois en conserve'));
+exec @IDProduitPetitPoidsConserveMarie800Gr = Magasin.NouveauProduit 'Marie',1.25,800,'gr',@IDGammePetitPoidsConserve;
+exec @IDProduitPetitPoidsConserveMarie400Gr = Magasin.NouveauProduit 'Marie',0.75,400,'gr',@IDGammePetitPoidsConserve;
+exec @IDProduitPetitPoidsConserveRene800Gr = Magasin.NouveauProduit 'René',0.49,800,'gr',@IDGammePetitPoidsConserve;
 
-exec Magasin.ApprovisionnerStock 1, 1, 25;
-exec Magasin.ApprovisionnerStock 1, 2, 12;
-exec Magasin.ApprovisionnerStock 1, 3, 5;
+exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveMarie800Gr, 25;
+exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveMarie400Gr, 12;
+exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveRene800Gr, 4;
 
 -- =============================================
 -- Ajout des contraintes sur les tables du magasin
@@ -265,6 +307,10 @@ foreign key (IDFamille) references Magasin.Famille (ID);
 alter table Magasin.Produit
 add constraint fk_produit_gamme
 foreign key (IDGamme) references Magasin.Gamme (ID);
+
+alter table Magasin.Produit
+add constraint uk_produit_unique
+unique(Marque, Contenance, Unite, IDGamme);
 
 alter table Magasin.Stock
 add constraint fk_stock_produit
