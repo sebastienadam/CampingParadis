@@ -48,12 +48,6 @@ go
 create schema Magasin;
 go
 
--- TODO:
--- * procédure 'nouveau produit'
--- * procédure 'nouvelle gamme'
--- * procédure 'nouvelle famille' => paramètre 'parent' optionnel
--- * procédure 'nouvelle hiérarchie famille'
-
 -- =============================================
 -- Création des tables
 -- =============================================
@@ -103,7 +97,7 @@ create table Magasin.Famille (
   Libelle varchar(64) not null unique,
 );
 
-create table Magasin.FamilleHerarchie (
+create table Magasin.FamilleHierarchie (
   IDFamille int,
   IDParent int,
   primary key (IDFamille, IDParent)
@@ -183,7 +177,7 @@ CREATE PROCEDURE Magasin.VendreProduit
   @IDVendeur int
 AS
 BEGIN
-	SET NOCOUNT ON;
+  SET NOCOUNT ON;
   declare @InStock int;
   declare @QuantiteStock int;
   declare @Prix money;
@@ -213,7 +207,7 @@ CREATE PROCEDURE Magasin.ApprovisionnerStock
   @Quantite int
 AS
 BEGIN
-	SET NOCOUNT ON;
+  SET NOCOUNT ON;
   declare @present int;
 
   select @present = count(*) from Magasin.Stock where IDMagasin = @IDMagasin and IDProduit = @IDProduit;
@@ -231,7 +225,7 @@ GO
 
 -- Crée un nouveau produit
 CREATE PROCEDURE Magasin.NouveauProduit
-	@Marque varchar(64),
+  @Marque varchar(64),
   @PrixUnitaire money,
   @Contenance decimal(8,2),
   @Unite varchar(16),
@@ -240,7 +234,7 @@ CREATE PROCEDURE Magasin.NouveauProduit
   @QuantiteStock int = null
 AS
 BEGIN
-	SET NOCOUNT ON;
+  SET NOCOUNT ON;
   declare @IDNouveauProduit int;
 
   insert into Magasin.Produit (Marque, PrixUnitaire, Contenance, Unite, IDGamme)
@@ -256,14 +250,55 @@ BEGIN
 END
 GO
 
+-- Crée une nouvelle gamme
+CREATE PROCEDURE Magasin.NouvelleGamme
+  @Libelle varchar(64), 
+  @IDFamille int
+AS
+BEGIN
+  insert into Magasin.Gamme(Libelle, IDFamille)
+  values(@Libelle,@IDFamille);
+  return SCOPE_IDENTITY();
+END
+GO
+
+-- Crée une nouvelle famille
+CREATE PROCEDURE Magasin.NouvelleFamille
+  @Libelle varchar(64),
+  @IDParent int = null
+AS
+BEGIN
+  SET NOCOUNT ON;
+  declare @IDNouvelleFamille int;
+  insert into Magasin.Famille (Libelle)
+  values (@Libelle);
+  set @IDNouvelleFamille = SCOPE_IDENTITY();
+  if @IDParent is not null begin
+    insert into Magasin.FamilleHierarchie (IDFamille,IDParent)
+    values(@IDNouvelleFamille, @IDParent);
+  end
+  return @IDNouvelleFamille;
+END
+GO
+
+-- Crée une nouvelle hiérarchie de famille
+CREATE PROCEDURE Magasin.NouvelleHierarchieFamille
+  @IDFamille int,
+  @IDParent int
+AS
+BEGIN
+  SET NOCOUNT ON;
+  insert into Magasin.FamilleHierarchie (IDFamille,IDParent)
+  values(@IDFamille, @IDParent);
+END
+GO
+
 -- =============================================
 -- Remplissage des tables du magasin
 -- =============================================
 declare @IDFamilleConserve int;
 declare @IDFamilleConserveLegume int;
 declare @IDFamilleLegume int;
-declare @IDFamilleLegumeFrais int;
-declare @IDFamilleLegumeSurgele int;
 declare @IDGammePetitPoidsConserve int;
 declare @IDMagasin int;
 declare @IDProduitPetitPoidsConserveMarie400Gr int;
@@ -274,38 +309,14 @@ insert into Magasin.Magasin (Nom, IDManager)
 values ('La superette des Bellettes grises', 1);
 set @IDMagasin = SCOPE_IDENTITY();
 
-insert into Magasin.Famille (Libelle)
-values ('Légumes');
-set @IDFamilleLegume =  SCOPE_IDENTITY();
-insert into Magasin.Famille (Libelle)
-values ('Conserves');
-set @IDFamilleConserve =  SCOPE_IDENTITY();
-insert into Magasin.Famille (Libelle)
-values ('Légumes frais');
-set @IDFamilleLegumeFrais =  SCOPE_IDENTITY();
-insert into Magasin.Famille (Libelle)
-values ('Légumes surgelés');
-set @IDFamilleLegumeSurgele =  SCOPE_IDENTITY();
-insert into Magasin.Famille (Libelle)
-values ('Conserves de légumes');
-set @IDFamilleConserveLegume =  SCOPE_IDENTITY();
+exec @IDFamilleLegume = Magasin.NouvelleFamille 'Légumes';
+exec @IDFamilleConserve = Magasin.NouvelleFamille 'Conserves';
+exec Magasin.NouvelleFamille 'Légumes frais', @IDFamilleLegume;
+exec Magasin.NouvelleFamille 'Légumes surgelés', @IDFamilleLegume;
+exec @IDFamilleConserveLegume = Magasin.NouvelleFamille 'Conserves de légumes', @IDFamilleLegume;
+exec Magasin.NouvelleHierarchieFamille @IDFamilleConserveLegume, @IDFamilleConserve;
 
-insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values(@IDFamilleLegumeFrais,
-       @IDFamilleLegume);
-insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values(@IDFamilleLegumeSurgele,
-       @IDFamilleLegume);
-insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values(@IDFamilleConserveLegume,
-       @IDFamilleLegume);
-insert into Magasin.FamilleHerarchie (IDFamille,IDParent)
-values(@IDFamilleConserveLegume,
-       @IDFamilleConserve);
-
-insert into Magasin.Gamme(Libelle, IDFamille)
-values('Petits pois en conserve',@IDFamilleConserveLegume);
-set @IDGammePetitPoidsConserve =  SCOPE_IDENTITY();
+exec @IDGammePetitPoidsConserve = Magasin.NouvelleGamme 'Petits pois en conserve',@IDFamilleConserveLegume;
 
 exec @IDProduitPetitPoidsConserveMarie800Gr = Magasin.NouveauProduit 'Marie',1.25,800,'gr',@IDGammePetitPoidsConserve;
 exec @IDProduitPetitPoidsConserveMarie400Gr = Magasin.NouveauProduit 'Marie',0.75,400,'gr',@IDGammePetitPoidsConserve;
@@ -334,11 +345,11 @@ alter table Magasin.HistoriqueVente
 add constraint fk_historiquevente_vendeur
 foreign key (IDVendeur) references Commun.Employe (ID);
 
-alter table Magasin.FamilleHerarchie
+alter table Magasin.FamilleHierarchie
 add constraint fk_famillehierarchie_familleid
 foreign key (IDFamille) references Magasin.Famille (ID);
 
-alter table Magasin.FamilleHerarchie
+alter table Magasin.FamilleHierarchie
 add constraint fk_famillehierarchie_familleparent
 foreign key (IDParent) references Magasin.Famille (ID);
 
@@ -371,11 +382,11 @@ go
 create view Magasin.FamilleDetails(ID, Libelle, Parent)
 as
     select F.ID, F.Libelle, P.Libelle Parent
-    from Magasin.Famille F,Magasin.FamilleHerarchie H, Magasin.Famille P
+    from Magasin.Famille F,Magasin.FamilleHierarchie H, Magasin.Famille P
     where F.ID = H.IDFamille
       and H.IDParent = P.ID
   union
     select *, null Parent
     from Magasin.Famille F
-    where ID not in (select distinct IDFamille from Magasin.FamilleHerarchie);
+    where ID not in (select distinct IDFamille from Magasin.FamilleHierarchie);
 go
