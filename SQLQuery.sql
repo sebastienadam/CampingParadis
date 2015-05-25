@@ -23,7 +23,7 @@ create schema Commun;
 go
 
 -- =============================================
--- Création des tables
+-- Création des tables communes
 -- =============================================
 
 create table Commun.Employe (
@@ -32,13 +32,69 @@ create table Commun.Employe (
   Prenom varchar(64) not null,
 );
 
+create table Commun.Client (
+  ID int identity(1,1) primary key,
+  Nom varchar(64) not null,
+  Prenom varchar(64) not null,
+  Adresse text,
+  Telephone varchar(32)
+);
+go
+
 -- =============================================
--- Remplissage des tables du magasin
+-- Création des triggers communs
+-- =============================================
+
+-- une fois qu'un client a été enregistré, il ne peut plus
+-- être supprimé
+create trigger Commun.trigger_client_non_effaçable
+on Commun.Client
+after delete
+as begin
+  rollback
+end;
+go
+
+-- =============================================
+-- Création des procédures communes
+-- =============================================
+
+-- Ajoute un nouveau client (ID n'est pas spécifié ou est null)
+-- ou modifie un client existant (ID est spécifié et est non null)
+CREATE PROCEDURE Commun.EnregistrerClient
+  @Nom varchar(64),
+  @Prenom varchar(64),
+  @Adresse text = null,
+  @Telephone varchar(32) = null,
+  @ID int = null
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+  if @ID is null begin
+    insert into Commun.Client(Nom, Prenom, Adresse, Telephone)
+    values (@Nom, @Prenom, @Adresse, @Telephone);
+  end else begin
+    update Commun.Client
+    set Nom = @Nom, Prenom = @Prenom, Adresse = @Adresse, Telephone = @Telephone
+    where ID = @ID;
+  end
+END
+GO
+
+-- =============================================
+-- Remplissage des tables communes
 -- =============================================
 
 insert into Commun.Employe (Nom, Prenom)
 values ('Perfect', 'Ford');
+
+exec Commun.EnregistrerClient 'Dent', 'Arthur';
+exec Commun.EnregistrerClient 'Beeblebrox', 'Zaphod';
+exec Commun.EnregistrerClient 'Mc Millan', 'Tricia';
+exec Commun.EnregistrerClient 'Dent', 'Arthur';
 go
+
 
 -- =============================================
 -- =============================================
@@ -49,7 +105,7 @@ create schema Magasin;
 go
 
 -- =============================================
--- Création des tables
+-- Création des tables du magasin
 -- =============================================
 
 create table Magasin.Magasin (
@@ -105,7 +161,7 @@ create table Magasin.FamilleHierarchie (
 go
 
 -- =============================================
--- Création des triggers
+-- Création des triggers du magasin
 -- =============================================
 
 -- Empêche d'avoir un stock négatif et met à jour l'attribut 'Epuise' de la table 'Magasin.Stock'.
@@ -165,7 +221,7 @@ end;
 go
 
 -- =============================================
--- Création des procédure
+-- Création des procédures du magasin
 -- =============================================
 
 -- Vend un produit. Le stock sera diminué de la quantité vendue et l'historique de vente sera mis à jour.
@@ -375,7 +431,7 @@ foreign key (IDMagasin) references Magasin.Magasin (ID);
 go
 
 -- =============================================
--- Création des vues
+-- Création des vues du magasin
 -- =============================================
 
 -- Affichage des familles avec leur parent
