@@ -55,6 +55,16 @@ as begin
 end;
 go
 
+-- une fois qu'un employé a été enregistré, il ne peut plus
+-- être supprimé
+create trigger Commun.trigger_employe_non_effaçable
+on Commun.Employe
+after delete
+as begin
+  rollback
+end;
+go
+
 -- =============================================
 -- Création des procédures communes
 -- =============================================
@@ -82,17 +92,37 @@ BEGIN
 END
 GO
 
+-- Ajoute un nouvel employé (ID n'est pas spécifié ou est null)
+-- ou modifie un client employé (ID est spécifié et est non null)
+CREATE PROCEDURE Commun.EnregistrerEmploye
+  @Nom varchar(64),
+  @Prenom varchar(64),
+  @ID int = null
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+  if @ID is null begin
+    insert into Commun.Employe(Nom, Prenom)
+    values (@Nom, @Prenom);
+  end else begin
+    update Commun.Employe
+    set Nom = @Nom, Prenom = @Prenom
+    where ID = @ID;
+  end
+END
+GO
+
 -- =============================================
 -- Remplissage des tables communes
 -- =============================================
 
-insert into Commun.Employe (Nom, Prenom)
-values ('Perfect', 'Ford');
-
-exec Commun.EnregistrerClient 'Dent', 'Arthur';
+exec Commun.EnregistrerClient 'Perfect', 'Ford';
 exec Commun.EnregistrerClient 'Beeblebrox', 'Zaphod';
-exec Commun.EnregistrerClient 'Mc Millan', 'Tricia';
 exec Commun.EnregistrerClient 'Dent', 'Arthur';
+
+exec Commun.EnregistrerEmploye 'Dent', 'Arthur';
+exec Commun.EnregistrerEmploye 'Mc Millan', 'Tricia';
 go
 
 
