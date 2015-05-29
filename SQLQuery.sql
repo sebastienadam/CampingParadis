@@ -39,6 +39,11 @@ create table Commun.Client (
   Adresse text,
   Telephone varchar(32)
 );
+
+create table Commun.LibelleStatut (
+  ID int primary key,
+  Libelle varchar(64) not null
+);
 go
 
 -- =============================================
@@ -79,7 +84,7 @@ CREATE PROCEDURE Commun.EnregistrerClient
   @ID int = null
 AS
 BEGIN
-	SET NOCOUNT ON;
+  SET NOCOUNT ON;
 
   if @ID is null begin
     insert into Commun.Client(Nom, Prenom, Adresse, Telephone)
@@ -100,7 +105,7 @@ CREATE PROCEDURE Commun.EnregistrerEmploye
   @ID int = null
 AS
 BEGIN
-	SET NOCOUNT ON;
+  SET NOCOUNT ON;
 
   if @ID is null begin
     insert into Commun.Employe(Nom, Prenom)
@@ -117,14 +122,218 @@ GO
 -- Remplissage des tables communes
 -- =============================================
 
+insert into Commun.LibelleStatut (ID, Libelle)
+values (0, 'En attente de paiement');
+insert into Commun.LibelleStatut (ID, Libelle)
+values (1, 'Payé');
+insert into Commun.LibelleStatut (ID, Libelle)
+values (2, 'Executé');
+insert into Commun.LibelleStatut (ID, Libelle)
+values (3, 'Annulé');
+insert into Commun.LibelleStatut (ID, Libelle)
+values (4, 'Actif');
+insert into Commun.LibelleStatut (ID, Libelle)
+values (5, 'En attente');
+
 exec Commun.EnregistrerClient 'Perfect', 'Ford';
 exec Commun.EnregistrerClient 'Beeblebrox', 'Zaphod';
-exec Commun.EnregistrerClient 'Dent', 'Arthur';
 
 exec Commun.EnregistrerEmploye 'Dent', 'Arthur';
 exec Commun.EnregistrerEmploye 'Mc Millan', 'Tricia';
 go
 
+
+-- =============================================
+-- =============================================
+-- Création des données des activités
+-- =============================================
+-- =============================================
+create schema Activite;
+go
+
+-- =============================================
+-- Création des tables des activités
+-- =============================================
+
+create table Activite.TypeActivite (
+  ID int identity(1,1) primary key,
+  Libelle varchar(128) not null,
+  MinParticipants int not null,
+  MaxParticipants int,
+  PreReservation bit not null default 1 -- pré-réservation obligatoire
+);
+
+create table Activite.Activite (
+  ID int identity(1,1) primary key,
+  IDType int not null,
+  DateExecution datetime not null,
+  Prix money not null,
+  Commentaire text,
+  IDStatut int not null default 5  -- en attente
+);
+
+create table Activite.Animateur (
+  IDActivite int,
+  IDAnimateur int,
+  primary key (IDActivite, IDAnimateur)
+);
+
+create table Activite.ReservationActivite (
+  ID int identity(1,1) primary key,
+  IDClient int not null,
+  IDActivite int not null,
+  NbPersones int not null default 1,
+  IDStatut int not null default 0,  -- En attente de paiement
+  DateEnregistrement datetime not null,
+  IDEmploye int not null
+);
+
+create table Activite.HistoriqueReservationActivite (
+  IDReservation int not null,
+  ActionFaite varchar(12) not null,
+  DateAction datetime not null,
+  IDClient int not null,
+  IDActivite int not null,
+  NbPersones int not null,
+  IDStatut int not null,
+  DateEnregistrement datetime not null,
+  IDEmploye int not null,
+  primary key (IDReservation, DateAction)
+);
+
+create table Activite.ForfaitTarifActivite (
+  ID int identity(1,1) primary key,
+  Libelle varchar(128) not null,
+  Reduction decimal(4,1) not null,
+  Validite int
+);
+
+create table Activite.ForfaitTarifActiviteClient (
+  IDForfaitTarifActivite int,
+  IDClient int,
+  DateExpiration date,
+  primary key (IDForfaitTarifActivite,IDClient)
+);
+
+create table Activite.ForfaitTarifActiviteTypeActivite (
+  IDForfaitTarifActivite int,
+  IDTypeActivite int,
+  primary key (IDForfaitTarifActivite,IDTypeActivite)
+);
+go
+
+-- =============================================
+-- Trigger sur les tables des activités
+-- =============================================
+
+-- Toutes les modifications sur les réservations sont enregistrées
+create trigger Activite.trigger_historique_reservation_activite
+on Activite.ReservationActivite
+after delete, insert, update
+as begin
+  declare @IDReservation int;
+  declare @ActionFaite varchar(12);
+  declare @IDClient int;
+  declare @IDActivite int;
+  declare @NbPersones int;
+  declare @IDStatut int;
+  declare @DateEnregistrement datetime;
+  declare @IDEmploye int;
+
+  if exists(select * from inserted) begin
+    select @IDReservation = id,
+           @ActionFaite = case
+                            when exists(select * from deleted) then 'modification'
+                            else 'ajout'
+                          end,
+           @IDClient = IDClient,
+           @IDActivite = IDActivite,
+           @NbPersones = NbPersones,
+           @IDStatut = IDStatut,
+           @DateEnregistrement = DateEnregistrement,
+           @IDEmploye = IDEmploye
+    from inserted;
+  end else begin
+    select @IDReservation = id,
+           @ActionFaite = 'suppression',
+           @IDClient = IDClient,
+           @IDActivite = IDActivite,
+           @NbPersones = NbPersones,
+           @IDStatut = IDStatut,
+           @DateEnregistrement = DateEnregistrement,
+           @IDEmploye = IDEmploye
+    from deleted;
+  end;
+  insert into Activite.HistoriqueReservationActivite (IDReservation, ActionFaite, DateAction, IDClient, IDActivite, NbPersones, IDStatut, DateEnregistrement, IDEmploye)
+  values (@IDReservation, @ActionFaite, GETDATE(), @IDClient, @IDActivite, @NbPersones, @IDStatut, @DateEnregistrement, @IDEmploye);
+end;
+go
+
+-- =============================================
+-- Contraintes sur les tables des activités
+-- =============================================
+
+alter table Activite.Activite
+add constraint fk_activite_type
+foreign key (IDType) references Activite.TypeActivite (ID);
+
+alter table Activite.Activite
+add constraint fk_activite_statut
+foreign key (IDStatut) references Commun.LibelleStatut (ID);
+
+alter table Activite.Animateur
+add constraint fk_activiteanimateur_activite
+foreign key (IDActivite) references Activite.Activite (ID);
+
+alter table Activite.Animateur
+add constraint fk_activiteanimateur_animateur
+foreign key (IDAnimateur) references Commun.Employe (ID);
+
+alter table Activite.ReservationActivite
+add constraint fk_reservationactivite_client
+foreign key (IDClient) references Commun.Client (ID);
+
+alter table Activite.ReservationActivite
+add constraint fk_reservationactivite_activite
+foreign key (IDActivite) references Activite.Activite (ID);
+
+alter table Activite.ReservationActivite
+add constraint fk_reservationactivite_statut
+foreign key (IDStatut) references Commun.LibelleStatut (ID);
+
+alter table Activite.ReservationActivite
+add constraint fk_reservationactivite_employe
+foreign key (IDEmploye) references Commun.Employe (ID);
+
+alter table Activite.ForfaitTarifActiviteClient
+add constraint fk_forfaittarifactiviteclient_forfaittarifactivite
+foreign key (IDForfaitTarifActivite) references Activite.ForfaitTarifActivite (ID);
+
+alter table Activite.ForfaitTarifActiviteClient
+add constraint fk_forfaittarifactiviteclient_client
+foreign key (IDClient) references Commun.Client (ID);
+
+alter table Activite.ForfaitTarifActiviteTypeActivite
+add constraint fk_forfaittarifactivitetypeactivite_forfaittarifactivite
+foreign key (IDForfaitTarifActivite) references Activite.ForfaitTarifActivite (ID);
+
+alter table Activite.ForfaitTarifActiviteTypeActivite
+add constraint fk_forfaittarifactivitetypeactivite_client
+foreign key (IDTypeActivite) references Activite.TypeActivite (ID);
+go
+
+-- =============================================
+-- Création des vues des activités
+-- =============================================
+
+-- Affichage des familles avec leurs parents
+create view Activite.ActiviteDetails (ID, Libelle, DateExecution, Prix, Statut, NbParticipants, MinParticipants, MaxParticipants, PreReservation)
+as
+  select A.ID, T.Libelle, A.DateExecution, A.Prix, S.Libelle, sum(R.NbPersones), T.MinParticipants, T.MaxParticipants, T.PreReservation
+  from Activite.Activite A, Activite.TypeActivite T, Commun.LibelleStatut S, Activite.ReservationActivite R
+  where A.IDType = T.ID and A.IDStatut = S.ID and A.ID = R.IDActivite
+  group by A.ID, T.Libelle, A.DateExecution, A.Prix, S.Libelle, T.MinParticipants, T.MaxParticipants, T.PreReservation;
+go
 
 -- =============================================
 -- =============================================
@@ -413,7 +622,7 @@ exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveMarie40
 exec Magasin.ApprovisionnerStock @IDMagasin, @IDProduitPetitPoidsConserveRene800Gr, 4;
 
 -- =============================================
--- Ajout des contraintes sur les tables du magasin
+-- Contraintes sur les tables du magasin
 -- =============================================
 alter table Magasin.Magasin
 add constraint fk_magasin_manager
@@ -464,7 +673,7 @@ go
 -- Création des vues du magasin
 -- =============================================
 
--- Affichage des familles avec leur parent
+-- Affichage des familles avec leurs parents
 create view Magasin.FamilleDetails(ID, Libelle, Parent)
 as
     select F.ID, F.Libelle, P.Libelle Parent
